@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kindle Cover</string>
+    <string name="a11y_description">Reads the book title shown in the Kindle app so its cover can be set as your Boox screensaver. Only watches the Kindle app and sends nothing anywhere except a cover lookup by title.</string>
+</resources>
