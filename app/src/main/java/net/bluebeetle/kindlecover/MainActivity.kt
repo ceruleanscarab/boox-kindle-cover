@@ -28,6 +28,10 @@ import java.util.Locale
 
 class MainActivity : Activity() {
 
+    companion object {
+        private const val PICK_IMAGE = 42
+    }
+
     private lateinit var prefs: Prefs
     private lateinit var storageStatus: TextView
     private lateinit var storageButton: Button
@@ -99,6 +103,15 @@ class MainActivity : Activity() {
                 toast("Looking up \"$t\"…")
             }
         })
+        root.addView(button("Use an image file instead…") {
+            startActivityForResult(
+                Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "image/*"
+                },
+                PICK_IMAGE
+            )
+        })
         root.addView(button("Restore original screensaver image") {
             toast(if (CoverWorker.restore(this)) "Original restored" else "No backup for this file yet")
             refresh()
@@ -119,6 +132,14 @@ class MainActivity : Activity() {
             else { prefs.titleIdRegex = r; prefs.lastTitle = null; toast("Saved") }
         })
 
+        root.addView(body("Google Books API key (optional, fixes \"HTTP 429\" errors):"))
+        val keyIn = input("API key").apply { setText(prefs.googleApiKey) }
+        root.addView(keyIn)
+        root.addView(button("Save API key") {
+            prefs.googleApiKey = keyIn.text.toString().trim()
+            toast("Saved")
+        })
+
         // --- Log ---
         root.addView(heading("Activity log (newest first)"))
         root.addView(button("Clear log") { AppLog.clear(this) })
@@ -127,6 +148,17 @@ class MainActivity : Activity() {
 
         setContentView(ScrollView(this).apply { addView(root) })
         loadTargets()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == PICK_IMAGE && resultCode == RESULT_OK) {
+            data?.data?.let {
+                CoverWorker.applyImage(this, it)
+                toast("Setting screensaver…")
+            }
+        }
     }
 
     override fun onResume() {

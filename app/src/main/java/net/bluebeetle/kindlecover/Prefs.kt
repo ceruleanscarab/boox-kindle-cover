@@ -41,6 +41,11 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("fill_screen", false)
         set(v) = sp.edit().putBoolean("fill_screen", v).apply()
 
+    /** Optional Google Books API key; without one Google often answers HTTP 429. */
+    var googleApiKey: String
+        get() = sp.getString("google_api_key", "") ?: ""
+        set(v) = sp.edit().putString("google_api_key", v).apply()
+
     var lastTitle: String?
         get() = sp.getString("last_title", null)
         set(v) = sp.edit().putString("last_title", v).apply()

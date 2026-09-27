@@ -16,8 +16,11 @@ object CoverFetcher {
     private var googleBlocked = false
 
     @Synchronized
-    fun fetch(info: BookInfo, log: (String) -> Unit): Bitmap? {
+    private var googleKey = ""
+
+    fun fetch(info: BookInfo, googleKey: String, log: (String) -> Unit): Bitmap? {
         this.log = log
+        this.googleKey = googleKey.trim()
         googleBlocked = false
         for (title in titleVariants(info.title)) {
             for (author in listOf(info.author, null).distinct()) {
@@ -68,7 +71,8 @@ object CoverFetcher {
             append("intitle:\"").append(title).append('"')
             if (!author.isNullOrBlank()) append(" inauthor:\"").append(author).append('"')
         }
-        val url = "https://www.googleapis.com/books/v1/volumes?q=${enc(q)}&maxResults=5&printType=books"
+        val url = "https://www.googleapis.com/books/v1/volumes?q=${enc(q)}&maxResults=5&printType=books" +
+            (if (googleKey.isNotEmpty()) "&key=${enc(googleKey)}" else "")
         val json = getText(url)
         if (json == null) { googleBlocked = true; return null }
         val items = JSONObject(json).optJSONArray("items")

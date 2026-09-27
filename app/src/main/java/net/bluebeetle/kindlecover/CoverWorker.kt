@@ -7,6 +7,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
+import android.net.Uri
 import java.io.File
 import java.util.concurrent.Executors
 
@@ -26,12 +27,41 @@ object CoverWorker {
         // Remember the title right away so repeated screens don't queue duplicate lookups.
         prefs.lastTitle = info.title
         prefs.lastAuthor = info.author
-        exec.execute { run(ctx, prefs, info, source) }
+        exec.execute {
+            val log = { m: String -> AppLog.i(ctx, m) }
+            log("[$source] \"${info.title}\"" + (info.author?.let { " by $it" } ?: ""))
+            val cover = try {
+                CoverFetcher.fetch(info, prefs.googleApiKey, log)
+            } catch (e: Exception) {
+                log("Lookup error: ${e.message}")
+                null
+            }
+            if (cover == null) {
+                log("No cover found. Try the manual box, or use an image file.")
+                return@execute
+            }
+            write(ctx, prefs, cover)
+        }
     }
 
-    private fun run(ctx: Context, prefs: Prefs, info: BookInfo, source: String) {
+    /** Uses an image the user picked (e.g. a cover downloaded from Amazon) instead of a lookup. */
+    fun applyImage(context: Context, uri: Uri) {
+        val ctx = context.applicationContext
+        exec.execute {
+            val bmp = try {
+                ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+            } catch (e: Exception) { null }
+            if (bmp == null) {
+                AppLog.i(ctx, "Couldn't read that image file")
+                return@execute
+            }
+            AppLog.i(ctx, "[File] using picked image (${bmp.width}×${bmp.height})")
+            write(ctx, Prefs(ctx), bmp)
+        }
+    }
+
+    private fun write(ctx: Context, prefs: Prefs, cover: Bitmap) {
         val log = { m: String -> AppLog.i(ctx, m) }
-        log("[$source] \"${info.title}\"" + (info.author?.let { " by $it" } ?: ""))
 
         val target = prefs.targetFile
         if (target == null) {
@@ -40,17 +70,6 @@ object CoverWorker {
         }
         if (!target.exists()) {
             log("Screensaver file not found: ${target.name}")
-            return
-        }
-
-        val cover = try {
-            CoverFetcher.fetch(info, log)
-        } catch (e: Exception) {
-            log("Lookup error: ${e.message}")
-            null
-        }
-        if (cover == null) {
-            log("No cover found. Try the manual box with a simpler title.")
             return
         }
 
