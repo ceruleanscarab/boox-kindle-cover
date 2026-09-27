@@ -7,19 +7,22 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
-/** Finds a cover image for a title using Google Books, then Open Library as a fallback. */
+/** Finds a cover image for a title: Apple Books first, then Google Books, then Open Library. */
 object CoverFetcher {
 
     private const val UA = "BooxKindleCover/0.1 (personal e-reader screensaver app)"
 
     private var log: (String) -> Unit = {}
+    private var googleBlocked = false
 
     @Synchronized
     fun fetch(info: BookInfo, log: (String) -> Unit): Bitmap? {
         this.log = log
+        googleBlocked = false
         for (title in titleVariants(info.title)) {
             for (author in listOf(info.author, null).distinct()) {
-                googleBooks(title, author)?.let { return it }
+                appleBooks(title, author)?.let { return it }
+                if (!googleBlocked) googleBooks(title, author)?.let { return it }
                 openLibrary(title, author)?.let { return it }
             }
         }
@@ -33,13 +36,41 @@ object CoverFetcher {
         return listOf(title, noParens, noSubtitle).filter { it.length >= 2 }.distinct()
     }
 
+    /** Normalises a title for loose comparison: lowercase letters and digits only. */
+    private fun norm(s: String) = s.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
+
+    private fun appleBooks(title: String, author: String?): Bitmap? {
+        val term = if (author.isNullOrBlank()) title else "$title $author"
+        val url = "https://itunes.apple.com/search?term=${enc(term)}&media=ebook&entity=ebook&limit=10"
+        val json = getText(url) ?: return null
+        val results = JSONObject(json).optJSONArray("results")
+        if (results == null || results.length() == 0) { log("Apple Books: no results for \"$title\""); return null }
+        val want = norm(title)
+        for (i in 0 until results.length()) {
+            val r = results.getJSONObject(i)
+            val name = norm(r.optString("trackName"))
+            if (name.isEmpty() || !(name.startsWith(want) || want.startsWith(name))) continue
+            val art = r.optString("artworkUrl100").takeIf { it.isNotEmpty() } ?: continue
+            // Apple's image server renders any size you ask for in the file name.
+            val big = art.replace(Regex("/\\d+x\\d+(bb)?\\.(jpg|png)$"), "/2400x2400bb.jpg")
+            val bmp = getBitmap(big) ?: getBitmap(art)
+            if (bmp != null && bmp.width >= 120) {
+                log("Cover from Apple Books: ${r.optString("trackName")} (${bmp.width}×${bmp.height})")
+                return bmp
+            }
+        }
+        log("Apple Books: no matching title for \"$title\"")
+        return null
+    }
+
     private fun googleBooks(title: String, author: String?): Bitmap? {
         val q = buildString {
             append("intitle:\"").append(title).append('"')
             if (!author.isNullOrBlank()) append(" inauthor:\"").append(author).append('"')
         }
         val url = "https://www.googleapis.com/books/v1/volumes?q=${enc(q)}&maxResults=5&printType=books"
-        val json = getText(url) ?: return null
+        val json = getText(url)
+        if (json == null) { googleBlocked = true; return null }
         val items = JSONObject(json).optJSONArray("items")
         if (items == null) { log("Google Books: no results for \"$title\""); return null }
         for (i in 0 until items.length()) {
@@ -76,6 +107,7 @@ object CoverFetcher {
                 return bmp
             }
         }
+        log("Open Library: no cover image for \"$title\"")
         return null
     }
 
