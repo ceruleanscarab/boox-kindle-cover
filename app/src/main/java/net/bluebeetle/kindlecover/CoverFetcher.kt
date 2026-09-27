@@ -12,11 +12,15 @@ object CoverFetcher {
 
     private const val UA = "BooxKindleCover/0.1 (personal e-reader screensaver app)"
 
+    private var log: (String) -> Unit = {}
+
+    @Synchronized
     fun fetch(info: BookInfo, log: (String) -> Unit): Bitmap? {
+        this.log = log
         for (title in titleVariants(info.title)) {
             for (author in listOf(info.author, null).distinct()) {
-                googleBooks(title, author, log)?.let { return it }
-                openLibrary(title, author, log)?.let { return it }
+                googleBooks(title, author)?.let { return it }
+                openLibrary(title, author)?.let { return it }
             }
         }
         return null
@@ -29,14 +33,15 @@ object CoverFetcher {
         return listOf(title, noParens, noSubtitle).filter { it.length >= 2 }.distinct()
     }
 
-    private fun googleBooks(title: String, author: String?, log: (String) -> Unit): Bitmap? {
+    private fun googleBooks(title: String, author: String?): Bitmap? {
         val q = buildString {
             append("intitle:\"").append(title).append('"')
             if (!author.isNullOrBlank()) append(" inauthor:\"").append(author).append('"')
         }
         val url = "https://www.googleapis.com/books/v1/volumes?q=${enc(q)}&maxResults=5&printType=books"
         val json = getText(url) ?: return null
-        val items = JSONObject(json).optJSONArray("items") ?: return null
+        val items = JSONObject(json).optJSONArray("items")
+        if (items == null) { log("Google Books: no results for \"$title\""); return null }
         for (i in 0 until items.length()) {
             val links = items.getJSONObject(i).optJSONObject("volumeInfo")
                 ?.optJSONObject("imageLinks") ?: continue
@@ -56,11 +61,12 @@ object CoverFetcher {
         return null
     }
 
-    private fun openLibrary(title: String, author: String?, log: (String) -> Unit): Bitmap? {
+    private fun openLibrary(title: String, author: String?): Bitmap? {
         var url = "https://openlibrary.org/search.json?title=${enc(title)}&limit=5&fields=cover_i"
         if (!author.isNullOrBlank()) url += "&author=${enc(author)}"
         val json = getText(url) ?: return null
-        val docs = JSONObject(json).optJSONArray("docs") ?: return null
+        val docs = JSONObject(json).optJSONArray("docs")
+        if (docs == null || docs.length() == 0) { log("Open Library: no results for \"$title\""); return null }
         for (i in 0 until docs.length()) {
             val id = docs.getJSONObject(i).optLong("cover_i", 0)
             if (id <= 0) continue
@@ -75,15 +81,26 @@ object CoverFetcher {
 
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 
-    private fun open(url: String): HttpURLConnection? = try {
-        (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 15_000
-            readTimeout = 20_000
-            instanceFollowRedirects = true
-            setRequestProperty("User-Agent", UA)
-        }.takeIf { it.responseCode in 200..299 }
-    } catch (e: Exception) {
-        null
+    private fun open(url: String): HttpURLConnection? {
+        val host = url.substringAfter("://").substringBefore("/")
+        return try {
+            val c = (URL(url).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 15_000
+                readTimeout = 20_000
+                instanceFollowRedirects = true
+                setRequestProperty("User-Agent", UA)
+            }
+            val code = c.responseCode
+            if (code in 200..299) c
+            else {
+                log("$host → HTTP $code")
+                c.disconnect()
+                null
+            }
+        } catch (e: Exception) {
+            log("$host → ${e.javaClass.simpleName}: ${e.message}")
+            null
+        }
     }
 
     private fun getText(url: String): String? =
@@ -91,7 +108,13 @@ object CoverFetcher {
 
     private fun getBitmap(url: String): Bitmap? =
         open(url)?.let { c ->
-            try { c.inputStream.use { BitmapFactory.decodeStream(it) } } catch (e: Exception) { null }
+            try {
+                c.inputStream.use { BitmapFactory.decodeStream(it) }
+                    ?: null.also { log("Couldn't decode image from ${url.substringAfter("://").substringBefore("/")}") }
+            } catch (e: Exception) {
+                log("Image download failed: ${e.message}")
+                null
+            }
             finally { c.disconnect() }
         }
 }
