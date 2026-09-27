@@ -23,7 +23,8 @@ object TitleExtractor {
     private const val MAX_NODES = 600
 
     private val DEFAULT_TITLE_ID = Regex(
-        "(?i)(book_?title|reader_?title|title_?(text|view|label)|toolbar_?title|" +
+        // action_bar_text_view is where the Kindle reader shows the title (confirmed on a Note Air4 C).
+        "(?i)(action_bar_text_view|book_?title|reader_?title|title_?(text|view|label)|toolbar_?title|" +
             "action_?bar_?title|chrome_?title|header_?title|:id/title$)"
     )
     private val AUTHOR_ID = Regex("(?i)author")
