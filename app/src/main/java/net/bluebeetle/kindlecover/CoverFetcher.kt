@@ -15,9 +15,9 @@ object CoverFetcher {
     private var log: (String) -> Unit = {}
     private var googleBlocked = false
 
-    @Synchronized
     private var googleKey = ""
 
+    @Synchronized
     fun fetch(info: BookInfo, googleKey: String, log: (String) -> Unit): Bitmap? {
         this.log = log
         this.googleKey = googleKey.trim()
