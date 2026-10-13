@@ -183,6 +183,7 @@ class KindleWidgetWatcher(context: Context, private val onBook: (BookInfo, Bitma
         val author = texts.getOrNull(1)
             ?.takeIf { it.lowercase() !in PLACEHOLDER_TEXT && !it.equals(title, ignoreCase = true) }
             ?.removePrefix("by ")?.removePrefix("By ")?.trim()
+            ?.let { normalizeAuthor(it) }
 
         val key = "$title|$author"
         if (key == lastKey) return
@@ -193,6 +194,17 @@ class KindleWidgetWatcher(context: Context, private val onBook: (BookInfo, Bitma
         prefs.widgetAuthor = author
         val copy = cover?.let { runCatching { it.copy(Bitmap.Config.ARGB_8888, false) }.getOrNull() }
         onBook(BookInfo(title, author), copy)
+    }
+
+    /**
+     * Kindle gives authors in catalog form, e.g. "Chaney, J.N.; Maggert, Terry".
+     * Keep the first author and flip it to "J.N. Chaney" so cover searches match.
+     */
+    private fun normalizeAuthor(raw: String): String? {
+        val first = raw.split(';', '&').first().trim()
+        val parts = first.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        val name = if (parts.size == 2) "${parts[1]} ${parts[0]}" else first
+        return name.takeIf { it.length >= 2 }
     }
 
     private inner class ReadingView(context: Context) : AppWidgetHostView(context) {

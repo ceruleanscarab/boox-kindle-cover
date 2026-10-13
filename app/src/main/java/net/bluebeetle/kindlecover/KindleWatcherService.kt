@@ -60,6 +60,10 @@ class KindleWatcherService : AccessibilityService() {
         val nodes = TitleExtractor.collect(root)
         if (prefs.debugDump) dump(nodes)
 
+        // With Kindle's widget linked, it reports every book reliably; reading titles off the
+        // screen only risks picking up home-screen headings like "Continue series you've started".
+        if (KindleWidgetWatcher.isLinked(this)) return
+
         var info = TitleExtractor.extract(nodes, prefs.titleIdRegex) ?: return
         // The reader never shows the author; borrow it from the Kindle widget when it's the same book.
         if (info.author == null && info.title.equals(prefs.widgetTitle, ignoreCase = true)) {

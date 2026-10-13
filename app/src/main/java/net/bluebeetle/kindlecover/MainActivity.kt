@@ -293,9 +293,10 @@ class MainActivity : Activity() {
     }
 
     private fun isWatcherEnabled(): Boolean {
-        val me = ComponentName(this, KindleWatcherService::class.java).flattenToString()
+        val me = ComponentName(this, KindleWatcherService::class.java)
         val enabled = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: ""
-        return enabled.split(':').any { it.equals(me, ignoreCase = true) }
+        // Entries may be long ("pkg/pkg.Cls") or short ("pkg/.Cls"); compare parsed components.
+        return enabled.split(':').any { ComponentName.unflattenFromString(it.trim()) == me }
     }
 
     // --- tiny view helpers ---
