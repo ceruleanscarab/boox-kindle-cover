@@ -5,7 +5,10 @@ Shows the cover of whatever you're reading in the Kindle app as the screensaver 
 ## How it works
 
 1. An accessibility service watches the Kindle app and reads the book title off the screen.
-2. It looks up the cover on Google Books, falling back to Open Library.
+   If you link Kindle's own "Last read book" widget (optional, see below), the app also hosts that
+   widget invisibly and gets the title **and author** from it whenever you open a book, with no tapping needed.
+2. It looks up the cover on Apple Books, then Google Books, then Open Library. If none has it and the
+   widget is linked, Kindle's own small thumbnail is used as a last resort.
 3. It scales the cover to your screen and overwrites the image Boox uses as its screensaver in `Screensaver/cloud`. Boox reads that file fresh each time the device sleeps.
 
 The original image is backed up the first time it's replaced, and the app has a button to restore it.
@@ -24,7 +27,10 @@ Every push to `main` builds a new release through GitHub Actions. Updates instal
 2. Tap **Open accessibility settings** and turn on **Kindle Cover**.
 3. Under **Screensaver image to replace**, pick the image Boox is currently using.
 4. In Boox settings, keep that image selected as your screensaver.
-5. In the Boox **App Management / Freeze** settings, make sure Kindle Cover isn't frozen or restricted in the background, or Boox may shut off the accessibility service.
+5. Optional but recommended: tap **Link Kindle's "Last read book" widget** and allow it when Android asks
+   "Allow Kindle Cover to create widgets?". Nothing appears on your home screen; the widget lives inside the app.
+   (Kindle only offers this widget on Android 12+ and switches it on per account, so the button may say it isn't available.)
+6. In the Boox **App Management / Freeze** settings, make sure Kindle Cover isn't frozen or restricted in the background, or Boox may shut off the accessibility service.
 
 Then open a book in Kindle and tap the middle of the page once so the title bar shows. The log in the app will show what it detected.
 

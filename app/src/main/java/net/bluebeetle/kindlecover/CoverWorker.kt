@@ -21,7 +21,11 @@ object CoverWorker {
     fun previewFile(ctx: Context) = File(ctx.applicationContext.filesDir, "preview.png")
     private fun backupDir(ctx: Context) = File(ctx.applicationContext.filesDir, "backups")
 
-    fun apply(context: Context, info: BookInfo, source: String) {
+    /**
+     * Looks up a cover for [info] and writes it. [fallback] (e.g. Kindle's small widget cover)
+     * is used only if no online source has the book.
+     */
+    fun apply(context: Context, info: BookInfo, source: String, fallback: Bitmap? = null) {
         val ctx = context.applicationContext
         val prefs = Prefs(ctx)
         // Remember the title right away so repeated screens don't queue duplicate lookups.
@@ -36,11 +40,15 @@ object CoverWorker {
                 log("Lookup error: ${e.message}")
                 null
             }
-            if (cover == null) {
+            if (cover == null && fallback != null) {
+                log("No cover online; using Kindle's own thumbnail (${fallback.width}×${fallback.height}, low-res)")
+            }
+            val chosen = cover ?: fallback
+            if (chosen == null) {
                 log("No cover found. Try the manual box, or use an image file.")
                 return@execute
             }
-            write(ctx, prefs, cover)
+            write(ctx, prefs, chosen)
         }
     }
 

@@ -3,6 +3,7 @@ name: Build APK
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -45,7 +46,9 @@ jobs:
           name: kindle-cover
           path: kindle-cover.apk
 
+      # Pull requests only build and upload the APK artifact; releases come from main.
       - name: Publish release
+        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}

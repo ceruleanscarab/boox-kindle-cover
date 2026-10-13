@@ -1,6 +1,7 @@
 package net.bluebeetle.kindlecover
 
 import android.app.Activity
+import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Intent
 import android.graphics.BitmapFactory
@@ -30,6 +31,7 @@ class MainActivity : Activity() {
 
     companion object {
         private const val PICK_IMAGE = 42
+        private const val BIND_WIDGET = 43
     }
 
     private lateinit var prefs: Prefs
@@ -37,6 +39,10 @@ class MainActivity : Activity() {
     private lateinit var storageButton: Button
     private lateinit var a11yStatus: TextView
     private lateinit var a11yButton: Button
+    private lateinit var widgetStatus: TextView
+    private lateinit var widgetButton: Button
+    private lateinit var widgetUnlink: Button
+    private var pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
     private lateinit var targetSpinner: Spinner
     private lateinit var currentBook: TextView
     private lateinit var preview: ImageView
@@ -69,6 +75,17 @@ class MainActivity : Activity() {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
         root.addView(a11yButton)
+
+        widgetStatus = body("")
+        root.addView(widgetStatus)
+        widgetButton = button("Link Kindle's \"Last read book\" widget") { linkWidget() }
+        root.addView(widgetButton)
+        widgetUnlink = button("Unlink Kindle widget") {
+            KindleWidgetWatcher.unlink(this)
+            toast("Unlinked")
+            refresh()
+        }
+        root.addView(widgetUnlink)
 
         // --- Target file ---
         root.addView(heading("Screensaver image to replace"))
@@ -150,9 +167,54 @@ class MainActivity : Activity() {
         loadTargets()
     }
 
+    /** Allocates a widget id and binds Kindle's widget to it, asking the user if needed. */
+    private fun linkWidget() {
+        val provider = KindleWidgetWatcher.findProvider(this)
+        if (provider == null) {
+            toast("Kindle's widget isn't available on this device")
+            AppLog.i(this, "Kindle's \"Last read book\" widget isn't switched on in this Kindle version")
+            return
+        }
+        KindleWidgetWatcher.unlink(this)
+        val id = KindleWidgetWatcher.host(this).allocateAppWidgetId()
+        if (AppWidgetManager.getInstance(this).bindAppWidgetIdIfAllowed(id, provider)) {
+            widgetLinked(id)
+        } else {
+            pendingWidgetId = id
+            startActivityForResult(
+                Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
+                    .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+                    .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, provider),
+                BIND_WIDGET
+            )
+        }
+    }
+
+    private fun widgetLinked(id: Int) {
+        prefs.widgetId = id
+        AppLog.i(this, "Linked Kindle's widget (id $id)")
+        val watcher = KindleWidgetWatcher.instance
+        if (watcher != null) watcher.reload()
+        else toast("Linked. Turn on the accessibility service so it can listen.")
+        refresh()
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == BIND_WIDGET) {
+            val id = pendingWidgetId
+            pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
+            if (resultCode == RESULT_OK && id != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                widgetLinked(id)
+            } else {
+                if (id != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                    runCatching { KindleWidgetWatcher.host(this).deleteAppWidgetId(id) }
+                }
+                toast("Widget permission wasn't granted")
+            }
+            return
+        }
         if (requestCode == PICK_IMAGE && resultCode == RESULT_OK) {
             data?.data?.let {
                 CoverWorker.applyImage(this, it)
@@ -211,6 +273,12 @@ class MainActivity : Activity() {
         val a11yOk = isWatcherEnabled()
         a11yStatus.text = if (a11yOk) "✓ Kindle watcher is on" else "✗ Turn on \"Kindle Cover\" under Accessibility"
         a11yButton.visibility = if (a11yOk) View.GONE else View.VISIBLE
+
+        val widgetOk = KindleWidgetWatcher.isLinked(this)
+        widgetStatus.text = if (widgetOk) "✓ Linked to Kindle's widget (adds the author, works without tapping)"
+            else "Optional: link Kindle's widget so books are detected without tapping, with the author"
+        widgetButton.visibility = if (widgetOk) View.GONE else View.VISIBLE
+        widgetUnlink.visibility = if (widgetOk) View.VISIBLE else View.GONE
 
         currentBook.text = prefs.lastTitle?.let { t -> t + (prefs.lastAuthor?.let { "\nby $it" } ?: "") }
             ?: "Nothing detected yet. Open a book in Kindle and tap the middle of the page once."

@@ -7,6 +7,11 @@
         android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
 
+    <!-- Needed on Android 11+ to see Kindle's widget provider. -->
+    <queries>
+        <package android:name="com.amazon.kindle" />
+    </queries>
+
     <application
         android:allowBackup="false"
         android:icon="@android:drawable/ic_menu_gallery"
