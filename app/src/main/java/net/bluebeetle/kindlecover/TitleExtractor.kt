@@ -82,6 +82,8 @@ object TitleExtractor {
         if (Regex("(?i)^(location|page|loc)\\b").containsMatchIn(s)) return false
         if (Regex("^\\d+\\s*%$").matches(s)) return false
         if (Regex("(?i)\\b(min|mins|hr|hrs)\\b.*\\bleft\\b").containsMatchIn(s)) return false
+        // Kindle home-screen section headings.
+        if (Regex("(?i)^(continue|recommended|recently|your |new in|because you|more like)").containsMatchIn(s)) return false
         return s.any { it.isLetter() }
     }
 }

@@ -53,4 +53,18 @@ class Prefs(context: Context) {
     var lastAuthor: String?
         get() = sp.getString("last_author", null)
         set(v) = sp.edit().putString("last_author", v).apply()
+
+    /** Id of the Kindle "Last read book" widget we host, or INVALID_APPWIDGET_ID (0) if not linked. */
+    var widgetId: Int
+        get() = sp.getInt("widget_id", 0)
+        set(v) = sp.edit().putInt("widget_id", v).apply()
+
+    /** Latest title/author the Kindle widget reported, used to add an author to reader-screen titles. */
+    var widgetTitle: String?
+        get() = sp.getString("widget_title", null)
+        set(v) = sp.edit().putString("widget_title", v).apply()
+
+    var widgetAuthor: String?
+        get() = sp.getString("widget_author", null)
+        set(v) = sp.edit().putString("widget_author", v).apply()
 }

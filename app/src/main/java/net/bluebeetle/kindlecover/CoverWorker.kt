@@ -21,7 +21,11 @@ object CoverWorker {
     fun previewFile(ctx: Context) = File(ctx.applicationContext.filesDir, "preview.png")
     private fun backupDir(ctx: Context) = File(ctx.applicationContext.filesDir, "backups")
 
-    fun apply(context: Context, info: BookInfo, source: String) {
+    /**
+     * Looks up a cover for [info] and writes it. [fallback] (e.g. Kindle's small widget cover)
+     * is used only if no online source has the book.
+     */
+    fun apply(context: Context, info: BookInfo, source: String, fallback: Bitmap? = null) {
         val ctx = context.applicationContext
         val prefs = Prefs(ctx)
         // Remember the title right away so repeated screens don't queue duplicate lookups.
@@ -36,11 +40,15 @@ object CoverWorker {
                 log("Lookup error: ${e.message}")
                 null
             }
-            if (cover == null) {
+            if (cover == null && fallback != null) {
+                log("No cover online; using Kindle's own thumbnail (${fallback.width}×${fallback.height}, low-res)")
+            }
+            val chosen = cover ?: fallback
+            if (chosen == null) {
                 log("No cover found. Try the manual box, or use an image file.")
                 return@execute
             }
-            write(ctx, prefs, cover)
+            write(ctx, prefs, chosen)
         }
     }
 
@@ -74,8 +82,11 @@ object CoverWorker {
         }
 
         try {
-            val backup = ensureBackup(ctx, target)
-            val (w, h) = imageSize(backup) ?: (DEFAULT_W to DEFAULT_H)
+            ensureBackup(ctx, target).let { orig ->
+                imageSize(orig)?.let { (ow, oh) -> log("Original screensaver image was ${ow}×${oh}") }
+            }
+            // Render at the real screen size: Boox crops images that aren't screen-shaped.
+            val (w, h) = screenSize(ctx)
             val out = render(cover, w, h, prefs.fillScreen)
             writeImage(out, target)
             previewFile(ctx).outputStream().use { out.compress(Bitmap.CompressFormat.PNG, 100, it) }
@@ -102,6 +113,18 @@ object CoverWorker {
         Prefs(ctx).lastTitle = null
         AppLog.i(ctx, "Restored original ${target.name}")
         return true
+    }
+
+    /** Physical screen size in portrait orientation (1860×2480 on the Note Air4 C). */
+    private fun screenSize(ctx: Context): Pair<Int, Int> {
+        val b = runCatching {
+            ctx.getSystemService(android.view.WindowManager::class.java)?.maximumWindowMetrics?.bounds
+        }.getOrNull()
+        val dm = ctx.resources.displayMetrics
+        val a = b?.width() ?: dm.widthPixels
+        val c = b?.height() ?: dm.heightPixels
+        if (a <= 0 || c <= 0) return DEFAULT_W to DEFAULT_H
+        return minOf(a, c) to maxOf(a, c)
     }
 
     private fun imageSize(f: File): Pair<Int, Int>? {

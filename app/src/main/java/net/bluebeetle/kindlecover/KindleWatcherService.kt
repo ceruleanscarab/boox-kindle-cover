@@ -17,10 +17,28 @@ class KindleWatcherService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private var scanQueued = false
     private var lastDumpHash = 0
+    private var widgetWatcher: KindleWidgetWatcher? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         AppLog.i(this, "Watcher connected")
+        // This service is always running, so it also hosts Kindle's "Last read book" widget.
+        widgetWatcher = KindleWidgetWatcher(this) { info, smallCover ->
+            if (isNew(info)) CoverWorker.apply(this, info, source = "Kindle widget", fallback = smallCover)
+        }.also { it.start() }
+    }
+
+    override fun onDestroy() {
+        widgetWatcher?.stop()
+        widgetWatcher = null
+        super.onDestroy()
+    }
+
+    /** A different book, or the same book now that we know its author. */
+    private fun isNew(info: BookInfo): Boolean {
+        val prefs = Prefs(this)
+        if (!info.title.equals(prefs.lastTitle, ignoreCase = true)) return true
+        return info.author != null && prefs.lastAuthor == null
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -42,8 +60,16 @@ class KindleWatcherService : AccessibilityService() {
         val nodes = TitleExtractor.collect(root)
         if (prefs.debugDump) dump(nodes)
 
-        val info = TitleExtractor.extract(nodes, prefs.titleIdRegex) ?: return
-        if (info.title.equals(prefs.lastTitle, ignoreCase = true)) return
+        // With Kindle's widget linked, it reports every book reliably; reading titles off the
+        // screen only risks picking up home-screen headings like "Continue series you've started".
+        if (KindleWidgetWatcher.isLinked(this)) return
+
+        var info = TitleExtractor.extract(nodes, prefs.titleIdRegex) ?: return
+        // The reader never shows the author; borrow it from the Kindle widget when it's the same book.
+        if (info.author == null && info.title.equals(prefs.widgetTitle, ignoreCase = true)) {
+            info = info.copy(author = prefs.widgetAuthor)
+        }
+        if (!isNew(info)) return
 
         CoverWorker.apply(this, info, source = "Kindle")
     }
